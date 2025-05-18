@@ -1,0 +1,14 @@
+Animal interface
+    Sound qry(): string
+
+Cat class
+    implements Animal
+
+    Sound qry(): string
+        return "meow"
+
+Dog class
+    implements Animal
+
+    Sound qry(): string
+        return "woof"
