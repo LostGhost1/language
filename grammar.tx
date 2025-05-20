@@ -1,0 +1,85 @@
+program:
+   blocks*= block
+;
+block:
+    block =  clazz | block = interface
+;
+clazz:
+    name=ID 'class' endl indent modifiers*=class_modifier contents*=class_content deindent
+;
+
+interface:
+    name=ID 'interface' endl indent contents*=interface_content deindent
+;
+
+class_modifier:
+    'implements' name=[interface] endl
+;
+
+class_content:
+    (content=field endl | content=method)
+;
+
+interface_content:
+    content = method_signature
+;
+
+field:
+    name=ID type=primtype
+;
+
+field_ref:
+    field=[field]
+;
+
+method:
+    signature=method_signature indent body=method_body deindent
+;
+
+method_signature:
+    name=ID ('qry' | 'cmd' | 'prim') '(' params*=field[','] ')' ':' returntype=primtype endl
+;
+
+method_body:
+    statements+=statement
+;
+statement:
+    (
+    statement=return_stmt | 
+    statement=function_call |
+    statement=assignment |
+    statement=field
+    ) endl
+;
+
+assignment:
+    name=ID '=' value=literal
+;
+
+function_call:
+    class_name=ID "." method_name=ID '(' params*=expression[','] ')'
+;
+
+expression:
+    value=literal | value=field_ref
+;
+
+return_stmt:
+    'return' value=expression
+;
+
+primtype:
+    primtype = 'string' | primtype = 'result'
+;
+literal:
+    value = STRING | value = NUMBER
+;
+endl:
+    'NEWLINE'
+;
+indent:
+    'INDENT'
+;
+deindent:
+    'DEINDENT'
+;

@@ -1,14 +1,5 @@
-Animal interface
-    Sound qry(): string
-
-Cat class
-    implements Animal
-
-    Sound qry(): string
-        return "meow"
-
-Dog class
-    implements Animal
-
-    Sound qry(): string
-        return "woof"
+Program class
+    Main prim(): result
+        greeting string 
+        greeting = "Hello world"
+        System.print(greeting)
