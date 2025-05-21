@@ -1,5 +1,14 @@
 from dataclasses import dataclass, field as dcfield
+from tkinter import NO
 from .ast import *
+
+
+def find_ancestor(cls: Any, ancestor: type) -> Any | None:
+    match = ancestor.__name__ in {c.__name__ for c in type(cls).mro()}
+    if match:
+        return cls
+    else:
+        return None
 
 
 def find_one(items, **query):
@@ -57,52 +66,17 @@ class Literal:
 
 
 @dataclass(kw_only=True)
-class Expression:
-    valueRef: Literal | FieldRef
-    value: Literal | Field = dcfield(init=False)
-
-    def resolve_references(self, cls: "Class"):
-        self.value = (
-            self.valueRef.resolve_references(cls)
-            if issubclass(type(self.valueRef), FieldRef)
-            else self.valueRef
-        )
-        if issubclass(type(self.value), Field):
-            self.value.resolve_references(cls)
-
-
-@dataclass(kw_only=True)
-class ReturnStatement:
-    value: Expression
-
-    def resolve_references(self, cls: "Class"):
-        self.value.resolve_references(cls)
-
-
-@dataclass(kw_only=True)
 class FunctionCall:
     function: "Method" = dcfield(init=False)
     functionRef: "MethodRef"
-    params: list[Expression]
+    params: list[Literal]
 
-    def resolve_references(self, cls: "Class"):
-        self.function = self.functionRef.resolve_references(cls)
-        self.function.resolve_references(cls)
-
-
-@dataclass(kw_only=True)
-class Assignment:
-    fieldRef: FieldRef
-    field: Field = dcfield(init=False)
-    value: Expression
-
-    def resolve_references(self, cls: "Class"):
-        self.field = self.fieldRef.resolve_references(cls)
-        self.field.resolve_references(cls)
-        self.value.resolve_references(cls)
+    def resolve_references(self, classes: list["Class"]):
+        self.function = self.functionRef.resolve_references(classes)
+        self.function.resolve_references(classes)
 
 
-Statement = ReturnStatement | FunctionCall | Assignment | Field
+Statement = FunctionCall
 
 
 @dataclass(kw_only=True)
@@ -110,18 +84,19 @@ class Method:
     name: str
     clsRef: "ClassRef"
     cls: "Class" = dcfield(init=False)
-    params: list[Field]
+    params: list[Any]
     returnType: Type
     body: list[Statement]
 
-    def resolve_references(self, cls: "Class"):
-        if cls.name != self.clsRef.name:
-            raise ValueError(
-                f"Method {self.name} belongs to class {self.clsRef.name}, not {cls.name}"
-            )
-        self.cls = cls
+    def resolve_references(self, classes: list["Class"]):
+        for cls in classes:
+            if cls.name == self.clsRef.name:
+                self.cls = cls
+                break
+        else:
+            raise ValueError(f"Class {self.clsRef.name} not found")
         for statement in self.body:
-            statement.resolve_references(cls)
+            statement.resolve_references(classes)
 
 
 @dataclass(kw_only=True)
@@ -129,12 +104,14 @@ class Class:
     name: str
     fields: list[Field]
     methods: list[Method]
+    classes: list["Class"]
 
     def __post_init__(self):
+        self.classes.append(self)
         for method in self.methods:
-            method.resolve_references(self)
-        for field in self.fields:
-            field.resolve_references(self)
+            method.resolve_references(self.classes)
+        # for field in self.fields:
+        #     field.resolve_references(self.classes)
 
 
 @dataclass(kw_only=True)
@@ -148,12 +125,13 @@ class MethodRef:
     name: str
     cls: "Class" = dcfield(init=False)
 
-    def resolve_references(self, cls: "Class") -> Method:
-        if cls.name != self.clsRef.name:
-            raise ValueError(
-                f"Class {cls.name} does not match reference {self.clsRef.name}"
-            )
-        self.cls = cls
+    def resolve_references(self, classes: list["Class"]) -> Method:
+        for cls in classes:
+            if cls.name == self.clsRef.name:
+                self.cls = cls
+                break
+        else:
+            raise ValueError(f"Class {self.clsRef.name} not found")
         return find_one(self.cls.methods, name=self.name)
 
 
@@ -169,150 +147,70 @@ class ProgramProc:
         pass
 
     def reduce(self) -> Program:
-        classes: list[Class] = [
-            Class(
-                name="System",
-                fields=[],
-                methods=[
-                    Method(
-                        name="print",
-                        params=[
-                            Field(
-                                name="value",
-                                type=Type(name="string"),
-                                clsRef=ClassRef(name="System"),
-                            )
-                        ],
-                        returnType=Type(name="result"),
-                        clsRef=ClassRef(name="System"),
-                        body=[],
-                    )
-                ],
-            )
-        ]
-        types: list[Type] = [
-            Type(name="string"),
-            Type(name="result"),
-        ]
+        classes: list[Class] = []
+        Class(
+            classes=classes,
+            name="System",
+            fields=[],
+            methods=[
+                Method(
+                    name="print",
+                    params=[],
+                    returnType=Type(name="result"),
+                    clsRef=ClassRef(name="System"),
+                    body=[],
+                )
+            ],
+        )
+
         for block in self.program.blocks:
-            if issubclass(type(block.block), clazz):
-                cls: clazz = block.block
-                fields: list[Field] = []
+            cls: clazz | None = find_ancestor(block.block, clazz)
+            if cls is not None:
                 methods: list[Method] = []
                 for content in cls.contents:
-                    if issubclass(type(content), field):
-                        fld: field = content
-                        fields.append(
-                            Field(
-                                name=fld.name,
-                                type=find_one(types, name=fld.type.primtype),
-                                clsRef=ClassRef(name=cls.name),
+                    mthd: method | None = find_ancestor(content.content, method)
+                    if mthd is not None:
+                        statements: list[Statement] = []
+                        for stmt in mthd.body.statements:
+                            fcall: function_call | None = find_ancestor(
+                                stmt.statement, function_call
                             )
-                        )
-                    elif issubclass(type(content.content), method):
-                        meth: method = content.content
-                        body: list[Statement] = []
-                        for statement in meth.body.statements:
-                            if issubclass(type(statement.statement), return_stmt):
-                                rt_stmt: return_stmt = statement.statement
-                                if issubclass(type(rt_stmt.value), field_ref):
-                                    f_ref: field_ref = rt_stmt.value
-                                    body.append(
-                                        ReturnStatement(
-                                            value=Expression(
-                                                valueRef=FieldRef(
-                                                    clsRef=ClassRef(name=cls.name),
-                                                    name=f_ref.field.name,
-                                                )
-                                            ),
-                                        )
-                                    )
-                                elif issubclass(type(rt_stmt.value), literal):
-                                    lit: literal = rt_stmt.value
-                                    body.append(
-                                        ReturnStatement(
-                                            value=Expression(
-                                                valueRef=Literal(value=lit.value)
-                                            ),
-                                        )
-                                    )
-                            elif issubclass(type(statement.statement), assignment):
-                                assn: assignment = statement.statement
-                                body.append(
-                                    Assignment(
-                                        fieldRef=FieldRef(
-                                            clsRef=ClassRef(name=cls.name),
-                                            name=assn.name,
-                                        ),
-                                        value=Expression(
-                                            valueRef=Literal(value=assn.value)
-                                        ),
-                                    )
-                                )
-                            elif issubclass(type(statement.statement), function_call):
-                                func_call: function_call = statement.statement
-                                params: list[Expression] = []
-                                for param in func_call.params:
-                                    if issubclass(type(param), field_ref):
-                                        f_ref: field_ref = param
-                                        params.append(
-                                            Expression(
-                                                valueRef=FieldRef(
-                                                    clsRef=ClassRef(name=cls.name),
-                                                    name=f_ref.field.name,
-                                                )
+                            if fcall is not None:
+                                plist: list[Literal] = []
+                                for param in fcall.params:
+                                    lit: literal | None = find_ancestor(param, literal)
+                                    if lit is not None:
+                                        plist.append(
+                                            Literal(
+                                                value=lit.value,
                                             )
                                         )
-                                    elif issubclass(type(param), literal):
-                                        lit: literal = param
-                                        params.append(
-                                            Expression(
-                                                valueRef=Literal(value=lit.value)
-                                            )
-                                        )
-                                body.append(
+                                statements.append(
                                     FunctionCall(
                                         functionRef=MethodRef(
-                                            clsRef=ClassRef(name=func_call.class_name),
-                                            name=func_call.method_name,
+                                            clsRef=ClassRef(name=fcall.class_name),
+                                            name=fcall.method_name,
                                         ),
-                                        params=params,
-                                    )
-                                )
-                            elif issubclass(type(statement.statement), field):
-                                fld: field = statement.statement
-                                fields.append(
-                                    Field(
-                                        name=fld.name,
-                                        type=find_one(types, name=fld.type.primtype),
-                                        clsRef=ClassRef(name=cls.name),
+                                        params=plist,
                                     )
                                 )
                         methods.append(
                             Method(
-                                name=meth.signature.name,
-                                params=[
-                                    Field(
-                                        name=arg.name,
-                                        type=find_one(types, name=arg.type.primtype),
-                                        clsRef=ClassRef(name=cls.name),
-                                    )
-                                    for arg in meth.signature.params
-                                ],
-                                returnType=find_one(
-                                    types, name=meth.signature.returntype.primtype
-                                ),
+                                name=mthd.signature.name,
+                                params=[],
+                                returnType=Type(name="result"),
                                 clsRef=ClassRef(name=cls.name),
-                                body=body,
+                                body=statements,
                             )
                         )
-                classes.append(
-                    Class(
-                        name=cls.name,
-                        fields=fields,
-                        methods=methods,
-                    )
+
+                Class(
+                    name=cls.name,
+                    fields=[],
+                    methods=methods,
+                    classes=classes,
                 )
+
         result = Program(classes=classes)
         return result
 

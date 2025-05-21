@@ -36,8 +36,16 @@ method:
     signature=method_signature indent body=method_body deindent
 ;
 
+local_var:
+    name=ID type=primtype
+;
+
 method_signature:
-    name=ID ('qry' | 'cmd' | 'prim') '(' params*=field[','] ')' ':' returntype=primtype endl
+    name=ID ('qry' | 'cmd' | 'prim') '(' params*=param[','] ')' ':' returntype=primtype endl
+;
+
+param:
+    name=ID type=primtype
 ;
 
 method_body:
@@ -45,27 +53,12 @@ method_body:
 ;
 statement:
     (
-    statement=return_stmt | 
-    statement=function_call |
-    statement=assignment |
-    statement=field
+    statement=function_call
     ) endl
 ;
 
-assignment:
-    name=ID '=' value=literal
-;
-
 function_call:
-    class_name=ID "." method_name=ID '(' params*=expression[','] ')'
-;
-
-expression:
-    value=literal | value=field_ref
-;
-
-return_stmt:
-    'return' value=expression
+    class_name=ID "." method_name=ID '(' params*=literal[','] ')'
 ;
 
 primtype:

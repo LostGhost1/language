@@ -16,9 +16,16 @@ class field:
 
 
 @dataclass(kw_only=True)
+class param:
+    name: str
+    type: primtype
+    parent: Any
+
+
+@dataclass(kw_only=True)
 class method_signature:
     name: str
-    params: list[field]
+    params: list[param]
     returntype: primtype
     parent: Any
 
@@ -37,7 +44,7 @@ class interface:
 
 @dataclass(kw_only=True)
 class literal:
-    value: str
+    value: str | int | float
     parent: Any
 
 
@@ -48,35 +55,23 @@ class field_ref:
 
 
 @dataclass(kw_only=True)
-class expression:
-    value: literal | field_ref
-    parent: Any
-
-
-@dataclass(kw_only=True)
-class return_stmt:
-    value: expression
-    parent: Any
-
-
-@dataclass(kw_only=True)
 class function_call:
     class_name: str
     method_name: str
-    params: list[expression]
+    params: list[literal]
     parent: Any
 
 
 @dataclass(kw_only=True)
 class assignment:
     name: str
-    value: str
+    value: literal
     parent: Any
 
 
 @dataclass(kw_only=True)
 class statement:
-    statement: return_stmt | function_call | assignment | field
+    statement: function_call
     parent: Any
 
 
@@ -126,10 +121,7 @@ classlist = [
     interface,
     literal,
     field_ref,
-    expression,
-    return_stmt,
     function_call,
-    assignment,
     statement,
     method_body,
     method,

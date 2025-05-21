@@ -1,16 +1,25 @@
+from ast import TypeVar
+from typing import Any, Generic, Type
 from textx import metamodel_from_file
 from .preprocessor import indent, inline
 
 from .ast import classlist
 from .reduce import Program, reduce
 
-
-def is_subclass(cls, class_name):
-    return class_name.__name__ in {c.__name__ for c in cls.mro()}
+T = TypeVar("T")
 
 
 def run_program(program: Program):
-    print(program)
+    for cls in program.classes:
+        if cls.name == "Program":
+            for method in cls.methods:
+                if method.name == "Main":
+                    for statement in method.body:
+                        if statement.function.cls.name == "System":
+                            if statement.function.name == "print":
+                                print(
+                                    ", ".join([str(x.value) for x in statement.params])
+                                )
 
 
 def run():

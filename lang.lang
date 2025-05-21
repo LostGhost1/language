@@ -1,5 +1,3 @@
 Program class
     Main prim(): result
-        greeting string 
-        greeting = "Hello world"
-        System.print(greeting)
+        System.print("Hello world")
