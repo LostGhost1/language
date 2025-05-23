@@ -28,13 +28,14 @@ field:
     name=ID type=primtype
 ;
 
-field_ref:
-    field=[field]
-;
-
 method:
     signature=method_signature indent body=method_body deindent
 ;
+
+assignment:
+    target=ID '=' value=literal
+;
+
 
 local_var:
     name=ID type=primtype
@@ -51,9 +52,17 @@ param:
 method_body:
     statements+=statement
 ;
+
+pazz:
+    'pass'
+;
+
 statement:
     (
-    statement=function_call
+    statement=function_call |
+    statement=local_var |
+    statement=assignment |
+    statement=pazz
     ) endl
 ;
 

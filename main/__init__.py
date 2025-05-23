@@ -15,8 +15,8 @@ def run_program(program: Program):
             for method in cls.methods:
                 if method.name == "Main":
                     for statement in method.body:
-                        if statement.function.cls.name == "System":
-                            if statement.function.name == "print":
+                        if statement.method.cls.name == "System":
+                            if statement.method.name == "print":
                                 print(
                                     ", ".join([str(x.value) for x in statement.params])
                                 )

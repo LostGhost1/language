@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field as dcfield
+from dataclasses import InitVar, dataclass, field as dcfield
 from tkinter import NO
 from .ast import *
 
@@ -25,195 +25,108 @@ def find_one(items, **query):
     return result
 
 
-@dataclass(kw_only=True)
-class Type:
-    name: str
-
-
-@dataclass(kw_only=True)
-class Field:
-    name: str
-    type: Type
-    clsRef: "ClassRef"
-    cls: "Class" = dcfield(init=False)
-
-    def resolve_references(self, cls: "Class"):
-        if cls.name != self.clsRef.name:
-            raise ValueError(
-                f"Class {cls.name} does not match reference {self.clsRef.name}"
-            )
-        self.cls = cls
-
-
-@dataclass(kw_only=True)
-class FieldRef:
-    clsRef: "ClassRef"
-    name: str
-    cls: "Class" = dcfield(init=False)
-
-    def resolve_references(self, cls: "Class") -> Field:
-        if cls.name != self.clsRef.name:
-            raise ValueError(
-                f"Class {cls.name} does not match reference {self.clsRef.name}"
-            )
-        self.cls = cls
-        return find_one(self.cls.fields, name=self.name)
-
-
-@dataclass(kw_only=True)
 class Literal:
     value: str | int | float
 
-
-@dataclass(kw_only=True)
-class FunctionCall:
-    function: "Method" = dcfield(init=False)
-    functionRef: "MethodRef"
-    params: list[Literal]
-
-    def resolve_references(self, classes: list["Class"]):
-        self.function = self.functionRef.resolve_references(classes)
-        self.function.resolve_references(classes)
+    def __init__(self, value: str | int | float):
+        self.value = value
 
 
-Statement = FunctionCall
-
-
-@dataclass(kw_only=True)
 class Method:
     name: str
-    clsRef: "ClassRef"
-    cls: "Class" = dcfield(init=False)
+    cls: "Class"
     params: list[Any]
-    returnType: Type
-    body: list[Statement]
+    returnType: str
+    body: list["Statement"]
+    local_vars: list["LocalVar"]
 
-    def resolve_references(self, classes: list["Class"]):
-        for cls in classes:
-            if cls.name == self.clsRef.name:
-                self.cls = cls
+    def __init__(self, cls: "Class", mthd: method):
+        self.cls = cls
+        self.name = mthd.signature.name
+        self.returnType = mthd.signature.returntype.primtype
+        self.body = []
+        self.local_vars = []
+        for stmt in mthd.body.statements:
+            mcall: function_call | None = find_ancestor(stmt.statement, function_call)
+            if mcall is not None:
+                self.body += [MethodCall(self, mcall)]
+            lvar: local_var | None = find_ancestor(stmt.statement, local_var)
+            if lvar is not None:
+                lv = LocalVar(self, lvar)
+                self.body += [lv]
+                self.local_vars += [lv]
+
+
+class LocalVar:
+    name: str
+    type: str
+    method: Method
+
+    def __init__(self, method: Method, lvar: local_var):
+        self.name = lvar.name
+        self.type = lvar.type.primtype
+        self.method = method
+
+
+class Assignment:
+    target: LocalVar
+    method: Method
+    value: Literal
+
+    def __init__(self, method: Method, assmt: assignment):
+        self.method = method
+        for local_var in method.local_vars:
+            if local_var.name == assmt.target:
+                self.target = local_var
                 break
         else:
-            raise ValueError(f"Class {self.clsRef.name} not found")
-        for statement in self.body:
-            statement.resolve_references(classes)
+            raise ValueError(
+                f"No target found for assignment {assmt.target}={assmt.value.value}"
+            )
+        self.value = Literal(assmt.value.value)
 
 
-@dataclass(kw_only=True)
+class MethodCall:
+    method: Method
+    params: list[Literal]
+
+    def __init__(self, method: Method, mcall: function_call):
+        self.method = method
+        self.params = [Literal(param.value) for param in mcall.params]
+
+
 class Class:
     name: str
-    fields: list[Field]
+
     methods: list[Method]
-    classes: list["Class"]
+    program: "Program"
 
-    def __post_init__(self):
-        self.classes.append(self)
-        for method in self.methods:
-            method.resolve_references(self.classes)
-        # for field in self.fields:
-        #     field.resolve_references(self.classes)
-
-
-@dataclass(kw_only=True)
-class ClassRef:
-    name: str
+    def __init__(self, program: "Program", cls: clazz):
+        self.methods = []
+        self.name = cls.name
+        self.program = program
+        for content in cls.contents:
+            mthd: method | None = find_ancestor(content.content, method)
+            if mthd is not None:
+                self.methods += [Method(self, mthd)]
 
 
-@dataclass(kw_only=True)
-class MethodRef:
-    clsRef: "ClassRef"
-    name: str
-    cls: "Class" = dcfield(init=False)
-
-    def resolve_references(self, classes: list["Class"]) -> Method:
-        for cls in classes:
-            if cls.name == self.clsRef.name:
-                self.cls = cls
-                break
-        else:
-            raise ValueError(f"Class {self.clsRef.name} not found")
-        return find_one(self.cls.methods, name=self.name)
+Statement = MethodCall | LocalVar | Assignment
 
 
-@dataclass(kw_only=True)
 class Program:
     classes: list[Class]
+
+    def __init__(self, pgm: program):
+        self.classes = []
+        for block in pgm.blocks:
+            cls: clazz | None = find_ancestor(block.block, clazz)
+            if cls is not None:
+                self.classes += [Class(self, cls)]
+
     pass
 
 
-class ProgramProc:
-    def __init__(self, program: program):
-        self.program = program
-        pass
-
-    def reduce(self) -> Program:
-        classes: list[Class] = []
-        Class(
-            classes=classes,
-            name="System",
-            fields=[],
-            methods=[
-                Method(
-                    name="print",
-                    params=[],
-                    returnType=Type(name="result"),
-                    clsRef=ClassRef(name="System"),
-                    body=[],
-                )
-            ],
-        )
-
-        for block in self.program.blocks:
-            cls: clazz | None = find_ancestor(block.block, clazz)
-            if cls is not None:
-                methods: list[Method] = []
-                for content in cls.contents:
-                    mthd: method | None = find_ancestor(content.content, method)
-                    if mthd is not None:
-                        statements: list[Statement] = []
-                        for stmt in mthd.body.statements:
-                            fcall: function_call | None = find_ancestor(
-                                stmt.statement, function_call
-                            )
-                            if fcall is not None:
-                                plist: list[Literal] = []
-                                for param in fcall.params:
-                                    lit: literal | None = find_ancestor(param, literal)
-                                    if lit is not None:
-                                        plist.append(
-                                            Literal(
-                                                value=lit.value,
-                                            )
-                                        )
-                                statements.append(
-                                    FunctionCall(
-                                        functionRef=MethodRef(
-                                            clsRef=ClassRef(name=fcall.class_name),
-                                            name=fcall.method_name,
-                                        ),
-                                        params=plist,
-                                    )
-                                )
-                        methods.append(
-                            Method(
-                                name=mthd.signature.name,
-                                params=[],
-                                returnType=Type(name="result"),
-                                clsRef=ClassRef(name=cls.name),
-                                body=statements,
-                            )
-                        )
-
-                Class(
-                    name=cls.name,
-                    fields=[],
-                    methods=methods,
-                    classes=classes,
-                )
-
-        result = Program(classes=classes)
-        return result
-
-
 def reduce(program: program) -> Program:
-    return ProgramProc(program).reduce()
+    result = Program(pgm=program)
+    return result
