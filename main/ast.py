@@ -7,6 +7,10 @@ class primtype:
     primtype: str
     parent: "field | param | method_signature | local_var"
 
+    def __postinit__(self):
+        if self.primtype not in ["string", "int", "float", "result"]:
+            raise ValueError("Invalid primtype")
+
 
 @dataclass(kw_only=True)
 class field:
@@ -45,15 +49,29 @@ class interface:
 
 @dataclass(kw_only=True)
 class literal:
-    value: str | int | float
+    value_str: str | None
+    value_num: int | float | None
+    value_result: str | None
     parent: Any
+
+
+@dataclass(kw_only=True)
+class identifier:
+    name: str
+    parent: "expression"
+
+
+@dataclass(kw_only=True)
+class expression:
+    expression: literal | identifier
+    parent: "function_call"
 
 
 @dataclass(kw_only=True)
 class function_call:
     class_name: str
     method_name: str
-    params: list[literal]
+    params: list[expression]
     parent: "statement"
 
 
@@ -136,4 +154,6 @@ classlist = [
     clazz,
     block,
     program,
+    identifier,
+    expression,
 ]

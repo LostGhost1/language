@@ -1,10 +1,10 @@
 System class
-    print prim(): result
+    print prim(s string): result
         pass
 
 
 Program class
     Main prim(): result
         greeting string
-        greeting = "world!"
-        System.print("Hello", "world")
+        greeting = "Hello world!"
+        System.print(greeting)

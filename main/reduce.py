@@ -1,5 +1,6 @@
-from dataclasses import InitVar, dataclass, field as dcfield
-from tkinter import NO
+from curses import ERR
+from enum import Enum, StrEnum, auto
+from threading import local
 from .ast import *
 
 
@@ -25,25 +26,78 @@ def find_one(items, **query):
     return result
 
 
-class Literal:
-    value: str | int | float
+class Result(StrEnum):
+    OK = auto()
+    ERROR = auto()
+    PENDING = auto()
 
-    def __init__(self, value: str | int | float):
-        self.value = value
+
+class Type:
+    type: "type"
+
+    def __init__(self, t: primtype):
+        if t.primtype == "string":
+            self.type = str
+        elif t.primtype == "int":
+            self.type = int
+        elif t.primtype == "float":
+            self.type = float
+        elif t.primtype == "result":
+            self.type = Result
+        else:
+            raise ValueError("Invalid type")
+
+
+class Literal:
+    value: str | int | float | Result
+    type: "Type"
+
+    def __init__(self, value: literal):
+        if value.value_str is not None:
+            self.value = value.value_str
+            self.type = Type(primtype(primtype="string", parent=None))  # type: ignore
+        elif value.value_num is not None:
+            self.value = value.value_num
+            self.type = Type(primtype(primtype="int", parent=None))  # type: ignore
+        elif value.value_result is not None:
+            self.value = Result(value.value_result)
+            self.type = Type(primtype(primtype="result", parent=None))  # type: ignore
+        else:
+            raise ValueError("Invalid literal")
+
+
+class Param:
+    name: str
+    type: Type
+    method: "Method"
+
+    def __init__(self, method: "Method", param: param):
+        self.name = param.name
+        self.type = Type(param.type)
+        self.method = method
 
 
 class Method:
     name: str
     cls: "Class"
-    params: list[Any]
+    params: list[Param]
     returnType: str
     body: list["Statement"]
     local_vars: list["LocalVar"]
+
+    def __hash__(self) -> int:
+        return hash((self.name, self.cls))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Method):
+            return False
+        return self.name == other.name and self.cls == other.cls
 
     def __init__(self, cls: "Class", mthd: method):
         self.cls = cls
         self.name = mthd.signature.name
         self.returnType = mthd.signature.returntype.primtype
+        self.params = [Param(self, param) for param in mthd.signature.params]
         self.body = []
         self.local_vars = []
         for stmt in mthd.body.statements:
@@ -55,12 +109,24 @@ class Method:
                 lv = LocalVar(self, lvar)
                 self.body += [lv]
                 self.local_vars += [lv]
+            assmt: assignment | None = find_ancestor(stmt.statement, assignment)
+            if assmt is not None:
+                self.body += [Assignment(self, assmt)]
 
 
 class LocalVar:
     name: str
     type: str
     method: Method
+
+    def __hash__(self) -> int:
+        # Hash by name, type and method
+        return hash((self.name, self.type, self.method))
+
+    def __eq__(self, other: object):
+        if not isinstance(other, LocalVar):
+            return False
+        return self.name == other.name and self.method == other.method
 
     def __init__(self, method: Method, lvar: local_var):
         self.name = lvar.name
@@ -81,18 +147,48 @@ class Assignment:
                 break
         else:
             raise ValueError(
-                f"No target found for assignment {assmt.target}={assmt.value.value}"
+                f"No target found for assignment {assmt.target}={assmt.value}"
             )
-        self.value = Literal(assmt.value.value)
+        self.value = Literal(assmt.value)
+
+
+class Expression:
+    value: Literal | LocalVar
+
+    def __init__(self, mcall: "MethodCall", expr: expression):
+        ident: identifier | None = find_ancestor(expr.expression, identifier)
+        if ident is not None:
+            self.value = LocalVar(mcall.src, lvar)
+        else:
+            lit: literal | None = find_ancestor(expr.expression, literal)
+            if lit is not None:
+                self.value = Literal(lit)
+            else:
+                raise ValueError(f"No value found for expression {expr}")
 
 
 class MethodCall:
-    method: Method
-    params: list[Literal]
+    src: Method
+    dst: Method
+    params: list[Expression]
 
     def __init__(self, method: Method, mcall: function_call):
-        self.method = method
-        self.params = [Literal(param.value) for param in mcall.params]
+        self.src = method
+        flag = False
+        self.params = []
+        for cls in method.cls.program.classes:
+            if cls.name == mcall.class_name:
+                for mthd in cls.methods:
+                    if mthd.name == mcall.method_name:
+                        self.dst = mthd
+                        flag = True
+                        break
+                if flag:
+                    break
+        else:
+            raise ValueError(f"No method found for call {mcall.method_name}")
+        for param in mcall.params:
+            self.params += [Expression(self, param)]
 
 
 class Class:
@@ -100,6 +196,9 @@ class Class:
 
     methods: list[Method]
     program: "Program"
+
+    def __hash__(self) -> int:
+        return hash(self.name)
 
     def __init__(self, program: "Program", cls: clazz):
         self.methods = []

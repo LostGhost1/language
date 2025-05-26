@@ -67,14 +67,24 @@ statement:
 ;
 
 function_call:
-    class_name=ID "." method_name=ID '(' params*=literal[','] ')'
+    class_name=ID "." method_name=ID '(' params*=expression[','] ')'
 ;
 
+expression:
+    (
+    expression=literal|
+    expression= identifier
+    )
+;
+
+identifier:
+    id=ID
+;
 primtype:
     primtype = 'string' | primtype = 'result'
 ;
 literal:
-    value = STRING | value = NUMBER
+    value_str = STRING | value_num = NUMBER | (value_result = "OK" | value_result = "ERROR"| value_result = "PENDING")
 ;
 endl:
     'NEWLINE'
