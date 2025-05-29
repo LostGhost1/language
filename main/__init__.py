@@ -6,6 +6,44 @@ from .ast import classlist
 from .reduce import *
 
 
+def resolve(method: Method, expr: Expression) -> Literal:
+    lit: Literal | None = find_ancestor(expr.value, Literal)
+    if lit is not None:
+        return lit
+    lvar: LocalVar | None = find_ancestor(expr.value, LocalVar)
+    if lvar is not None:
+        return lvar
+
+    pass
+
+
+def mcall(program: Program, method: Method) -> Literal:
+    vars: dict[LocalVar, Literal | None] = {var: None for var in method.local_vars}
+    for statement in method.body:
+        mcall: MethodCall | None = find_ancestor(statement, MethodCall)
+        if mcall is not None:
+            if mcall.dst.cls.name == "System":
+                if mcall.dst.name == "print":
+                    lit: Literal | None = find_ancestor(mcall.params[0].value, Literal)
+                    if lit is not None:
+                        p = lit.value
+                    else:
+                        lvar: LocalVar | None = find_ancestor(
+                            mcall.params[0].value, LocalVar
+                        )
+                        if lvar is not None and lvar in vars and vars[lvar] is not None:
+                            p = vars[lvar].value  # type: ignore
+                        else:
+                            raise ValueError("Variable not found")
+                    print(p)
+        assignment: Assignment | None = find_ancestor(statement, Assignment)
+        if assignment is not None:
+            vars[assignment.target] = resolve(method, assignment.value)
+    result = Literal()
+    result.value = Result.OK
+    return result
+
+
 def run_program(program: Program):
     main: Method | None = None
     flag = False
@@ -20,25 +58,7 @@ def run_program(program: Program):
                 break
     if main is None:
         raise ValueError("Program.Main not found")
-    vars: dict[LocalVar, Literal | None] = {var: None for var in main.local_vars}
-    for statement in main.body:
-        mcall: MethodCall | None = find_ancestor(statement, MethodCall)
-        if mcall is not None:
-            if mcall.dst.cls.name == "System":
-                if mcall.dst.name == "print":
-                    # lit: Literal | None = find_ancestor(mcall.params[0], Literal)
-                    # if lit is not None:
-                    #     p = lit.value
-                    # else:
-                    #     lvar: LocalVar | None = find_ancestor(mcall.params[0], LocalVar)
-                    #     if lvar is not None and lvar in vars and vars[lvar] is not None:
-                    #         p = vars[lvar].value  # type: ignore
-                    #     else:
-                    #         raise ValueError("Variable not found")
-                    print(mcall.params[0])
-        assignment: Assignment | None = find_ancestor(statement, Assignment)
-        if assignment is not None:
-            vars[assignment.target] = assignment.value
+    mcall(program, main)
 
 
 def run():

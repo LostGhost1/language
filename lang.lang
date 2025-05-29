@@ -4,7 +4,10 @@ System class
 
 
 Program class
+    Greeting prim(): string
+        return "Hello world!"
+
     Main prim(): result
         greeting string
-        greeting = "Hello world!"
+        greeting = Greeting()
         System.print(greeting)

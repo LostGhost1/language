@@ -63,7 +63,7 @@ class identifier:
 
 @dataclass(kw_only=True)
 class expression:
-    expression: literal | identifier
+    expression: "literal | identifier | function_call"
     parent: "function_call"
 
 
@@ -90,13 +90,19 @@ class pazz:
 @dataclass(kw_only=True)
 class assignment:
     target: str
-    value: literal
+    value: expression
+    parent: "statement"
+
+
+@dataclass(kw_only=True)
+class return_stmt:
+    value: expression
     parent: "statement"
 
 
 @dataclass(kw_only=True)
 class statement:
-    statement: function_call | local_var | assignment | pazz
+    statement: function_call | local_var | assignment | return_stmt | pazz
     parent: "method_body"
 
 
@@ -156,4 +162,5 @@ classlist = [
     program,
     identifier,
     expression,
+    return_stmt,
 ]

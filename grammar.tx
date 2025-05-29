@@ -33,7 +33,7 @@ method:
 ;
 
 assignment:
-    target=ID '=' value=literal
+    target=ID '=' value=expression
 ;
 
 
@@ -53,6 +53,10 @@ method_body:
     statements+=statement
 ;
 
+return_stmt:
+    'return' value=expression
+;
+
 pazz:
     'pass'
 ;
@@ -62,23 +66,25 @@ statement:
     statement=function_call |
     statement=local_var |
     statement=assignment |
-    statement=pazz
+    statement=pazz |
+    statement=return_stmt
     ) endl
 ;
 
 function_call:
-    class_name=ID "." method_name=ID '(' params*=expression[','] ')'
+    (class_name=ID ".")? method_name=ID '(' params*=expression[','] ')'
 ;
 
 expression:
     (
+    expression=function_call |
     expression=literal|
-    expression= identifier
+    expression=identifier
     )
 ;
 
 identifier:
-    id=ID
+    name=ID
 ;
 primtype:
     primtype = 'string' | primtype = 'result'

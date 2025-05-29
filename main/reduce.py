@@ -1,6 +1,4 @@
-from curses import ERR
 from enum import Enum, StrEnum, auto
-from threading import local
 from .ast import *
 
 
@@ -10,20 +8,6 @@ def find_ancestor(cls: Any, ancestor: type) -> Any | None:
         return cls
     else:
         return None
-
-
-def find_one(items, **query):
-    result = next(
-        (
-            item
-            for item in items
-            if all(getattr(item, k) == v for k, v in query.items())
-        ),
-        None,
-    )
-    if result is None:
-        raise ValueError(f"No item found with query {query}")
-    return result
 
 
 class Result(StrEnum):
@@ -52,7 +36,9 @@ class Literal:
     value: str | int | float | Result
     type: "Type"
 
-    def __init__(self, value: literal):
+    @classmethod
+    def from_literal(cls, value: literal):
+        self = cls()
         if value.value_str is not None:
             self.value = value.value_str
             self.type = Type(primtype(primtype="string", parent=None))  # type: ignore
@@ -64,6 +50,7 @@ class Literal:
             self.type = Type(primtype(primtype="result", parent=None))  # type: ignore
         else:
             raise ValueError("Invalid literal")
+        return self
 
 
 class Param:
@@ -137,7 +124,7 @@ class LocalVar:
 class Assignment:
     target: LocalVar
     method: Method
-    value: Literal
+    value: "Expression"
 
     def __init__(self, method: Method, assmt: assignment):
         self.method = method
@@ -149,22 +136,41 @@ class Assignment:
             raise ValueError(
                 f"No target found for assignment {assmt.target}={assmt.value}"
             )
-        self.value = Literal(assmt.value)
+        self.value = Expression.from_assignment(self, assmt.value)
 
 
 class Expression:
-    value: Literal | LocalVar
+    value: "Literal | LocalVar |MethodCall"
 
-    def __init__(self, mcall: "MethodCall", expr: expression):
+    @classmethod
+    def from_mcall(cls, mcall: "MethodCall", expr: expression):
+        return cls(mcall.src, expr)  # type: ignore
+
+    @classmethod
+    def from_assignment(cls, assmt: Assignment, expr: expression):
+        return cls(assmt.method, expr)  # type: ignore
+
+    def __init__(self, method: Method, expr: expression):
         ident: identifier | None = find_ancestor(expr.expression, identifier)
         if ident is not None:
-            self.value = LocalVar(mcall.src, lvar)
+            for local_var in method.local_vars:
+                if local_var.name == ident.name:
+                    self.value = local_var
+                    break
+            else:
+                raise ValueError(f"No local variable found for identifier {ident}")
         else:
             lit: literal | None = find_ancestor(expr.expression, literal)
             if lit is not None:
-                self.value = Literal(lit)
+                self.value = Literal.from_literal(lit)
             else:
-                raise ValueError(f"No value found for expression {expr}")
+                mcall: function_call | None = find_ancestor(
+                    expr.expression, function_call
+                )
+                if mcall is not None:
+                    self.value = MethodCall(method, mcall)
+                else:
+                    raise ValueError("Invalid expression")
 
 
 class MethodCall:
@@ -176,7 +182,9 @@ class MethodCall:
         self.src = method
         flag = False
         self.params = []
-        for cls in method.cls.program.classes:
+        if mcall.class_name == "":
+            mcall.class_name = method.cls.name
+        for cls in method.cls.program.classes + [method.cls]:
             if cls.name == mcall.class_name:
                 for mthd in cls.methods:
                     if mthd.name == mcall.method_name:
@@ -188,7 +196,7 @@ class MethodCall:
         else:
             raise ValueError(f"No method found for call {mcall.method_name}")
         for param in mcall.params:
-            self.params += [Expression(self, param)]
+            self.params += [Expression.from_mcall(self, param)]
 
 
 class Class:
