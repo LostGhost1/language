@@ -1,23 +1,40 @@
 from ast import TypeVar
-from textx import metamodel_from_file  # type: ignore
+from textx import metamodel_from_file
+
+from main.reduce import Expression, Literal, LocalVar, MethodCall  # type: ignore
 from .preprocessor import indent, inline
 
 from .ast import classlist
 from .reduce import *
 
 
-def resolve(method: Method, expr: Expression) -> Literal:
+def resolve(
+    method: Method, vars: dict[LocalVar, Literal | None], expr: Expression
+) -> Literal:
     lit: Literal | None = find_ancestor(expr.value, Literal)
     if lit is not None:
         return lit
     lvar: LocalVar | None = find_ancestor(expr.value, LocalVar)
     if lvar is not None:
-        return lvar
-
+        result = vars[lvar]
+        if result is not None:
+            return result
+        raise ValueError("Variable not found")
+    mc: MethodCall | None = find_ancestor(expr.value, MethodCall)
+    if mc is not None:
+        return mcall(
+            method.cls.program,
+            {
+                mc.dst.params[i]: resolve(method, vars, p)
+                for i, p in enumerate(mc.params)
+            },
+            mc.dst,
+        )
+    raise ValueError("Expression not resolved")
     pass
 
 
-def mcall(program: Program, method: Method) -> Literal:
+def mcall(program: Program, params: dict[Param, Literal], method: Method) -> Literal:
     vars: dict[LocalVar, Literal | None] = {var: None for var in method.local_vars}
     for statement in method.body:
         mcall: MethodCall | None = find_ancestor(statement, MethodCall)
@@ -38,10 +55,11 @@ def mcall(program: Program, method: Method) -> Literal:
                     print(p)
         assignment: Assignment | None = find_ancestor(statement, Assignment)
         if assignment is not None:
-            vars[assignment.target] = resolve(method, assignment.value)
-    result = Literal()
-    result.value = Result.OK
-    return result
+            vars[assignment.target] = resolve(method, vars, assignment.value)
+        return_stmt: Return | None = find_ancestor(statement, Return)
+        if return_stmt is not None:
+            return resolve(method, vars, return_stmt.value)
+    raise ValueError("MethodCall not resolved")
 
 
 def run_program(program: Program):
@@ -58,7 +76,11 @@ def run_program(program: Program):
                 break
     if main is None:
         raise ValueError("Program.Main not found")
-    mcall(program, main)
+    result = mcall(program, {}, main)
+    if result.value == "ok":
+        print("Program executed successfully")
+    else:
+        print(f"Program failed")
 
 
 def run():

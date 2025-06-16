@@ -49,9 +49,9 @@ class interface:
 
 @dataclass(kw_only=True)
 class literal:
-    value_str: str | None
-    value_num: int | float | None
-    value_result: str | None
+    value_str: str
+    value_num: int | float
+    value_result: str
     parent: Any
 
 

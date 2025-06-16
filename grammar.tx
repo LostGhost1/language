@@ -90,7 +90,7 @@ primtype:
     primtype = 'string' | primtype = 'result'
 ;
 literal:
-    value_str = STRING | value_num = NUMBER | (value_result = "OK" | value_result = "ERROR"| value_result = "PENDING")
+    (value_result = "OK" | value_result = "ERROR"| value_result = "PENDING") |value_str = STRING | value_num = NUMBER 
 ;
 endl:
     'NEWLINE'

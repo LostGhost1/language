@@ -11,3 +11,4 @@ Program class
         greeting string
         greeting = Greeting()
         System.print(greeting)
+        return OK

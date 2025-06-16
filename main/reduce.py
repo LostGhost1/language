@@ -39,14 +39,26 @@ class Literal:
     @classmethod
     def from_literal(cls, value: literal):
         self = cls()
-        if value.value_str is not None:
+        if (
+            value.value_str != ""
+            and (value.value_num == 0.0 or value.value_num == 0)
+            and value.value_result == ""
+        ):
             self.value = value.value_str
             self.type = Type(primtype(primtype="string", parent=None))  # type: ignore
-        elif value.value_num is not None:
+        elif (
+            (value.value_num != 0.0 or value.value_num != 0)
+            and value.value_result == ""
+            and value.value_str == ""
+        ):
             self.value = value.value_num
             self.type = Type(primtype(primtype="int", parent=None))  # type: ignore
-        elif value.value_result is not None:
-            self.value = Result(value.value_result)
+        elif (
+            value.value_result != ""
+            and value.value_str == ""
+            and (value.value_num == 0.0 or value.value_num == 0)
+        ):
+            self.value = Result(value.value_result.lower())
             self.type = Type(primtype(primtype="result", parent=None))  # type: ignore
         else:
             raise ValueError("Invalid literal")
@@ -62,6 +74,15 @@ class Param:
         self.name = param.name
         self.type = Type(param.type)
         self.method = method
+
+
+class Return:
+    method: "Method"
+    value: "Expression"
+
+    def __init__(self, method: "Method", expr: expression):
+        self.method = method
+        self.value = Expression(method, expr)
 
 
 class Method:
@@ -99,6 +120,9 @@ class Method:
             assmt: assignment | None = find_ancestor(stmt.statement, assignment)
             if assmt is not None:
                 self.body += [Assignment(self, assmt)]
+            ret: return_stmt | None = find_ancestor(stmt.statement, return_stmt)
+            if ret is not None:
+                self.body += [Return(self, ret.value)]
 
 
 class LocalVar:
@@ -218,7 +242,7 @@ class Class:
                 self.methods += [Method(self, mthd)]
 
 
-Statement = MethodCall | LocalVar | Assignment
+Statement = MethodCall | LocalVar | Assignment | Return
 
 
 class Program:
